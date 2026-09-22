@@ -11,6 +11,10 @@ import { isModuleLazyInSettings, resolveExtensionEntries } from "../src/resolve.
 import type { LazySpec, LoadResult, ResolvedEntry } from "../src/types.ts";
 
 const tempRoots: string[] = [];
+const inheritedChildMarkers = Object.fromEntries(
+	Object.entries(process.env).filter(([key]) => key === "PI_IS_SUBAGENT" || /SUBAGENT/.test(key)),
+);
+for (const key of Object.keys(inheritedChildMarkers)) delete process.env[key];
 
 function tempDir(prefix = "pi-lazy-test-"): string {
 	const path = mkdtempSync(join(tmpdir(), prefix));
@@ -20,6 +24,7 @@ function tempDir(prefix = "pi-lazy-test-"): string {
 
 test.after(() => {
 	for (const path of tempRoots) rmSync(path, { recursive: true, force: true });
+	Object.assign(process.env, inheritedChildMarkers);
 });
 
 function writeJson(path: string, value: unknown) {
@@ -113,6 +118,76 @@ test("config validation retains valid specs and rejects duplicate names", () => 
 	assert.deepEqual(config.specs[1]?.tools, ["ok"]);
 	assert.equal(config.specs.some((spec) => spec.name === "grok-cli"), false);
 	assert.ok(errors.some((message) => /duplicate spec name/.test(message)));
+});
+
+test("child processes omit lazy stubs unless specs opt in", () => {
+	const agent = tempDir();
+	writeJson(join(agent, "lazy.json"), {
+		version: 1,
+		specs: [
+			{ name: "default", source: "npm:example-default", lazy: true, tools: ["default_tool"] },
+			{ name: "enabled", source: "npm:example-enabled", lazy: true, loadInSubagents: true, tools: ["enabled_tool"] },
+			{ name: "disabled", source: "npm:example-disabled", lazy: true, loadInSubagents: false, tools: ["disabled_tool"] },
+			{ name: "invalid", source: "npm:example-invalid", lazy: true, loadInSubagents: "false", tools: ["invalid_tool"] },
+		],
+	});
+	writeJson(join(agent, "settings.json"), {
+		packages: [
+			{ source: "npm:example-default", extensions: [] },
+			{ source: "npm:example-enabled", extensions: [] },
+			{ source: "npm:example-disabled", extensions: [] },
+			{ source: "npm:example-invalid", extensions: [] },
+		],
+	});
+	const previousEnv = { ...process.env };
+	try {
+		for (const key of Object.keys(process.env)) {
+			if (key === "PI_IS_SUBAGENT" || /SUBAGENT/.test(key)) delete process.env[key];
+		}
+		process.env.PI_SUBAGENT_CHILD = "1";
+		const child = mockPi();
+		createPiLazy(child.api, agent);
+		assert.equal(child.tools.has("default_tool"), false);
+		assert.equal(child.tools.has("enabled_tool"), true);
+		assert.equal(child.tools.has("disabled_tool"), false);
+		assert.equal(child.tools.has("invalid_tool"), false);
+	} finally {
+		for (const key of Object.keys(process.env)) delete process.env[key];
+		Object.assign(process.env, previousEnv);
+	}
+
+	process.env.PI_SUBAGENT_DEPTH = "3";
+	process.env.PI_SUBAGENT_PARENT_SESSION = "parent-session";
+	const parent = mockPi();
+	createPiLazy(parent.api, agent);
+	delete process.env.PI_SUBAGENT_DEPTH;
+	assert.equal(parent.tools.has("default_tool"), true);
+	assert.equal(parent.tools.has("enabled_tool"), true);
+	assert.equal(parent.tools.has("disabled_tool"), true);
+	assert.equal(parent.tools.has("invalid_tool"), true);
+});
+
+test("generic child markers disable lazy stubs", () => {
+	const agent = tempDir();
+	writeJson(join(agent, "lazy.json"), {
+		version: 1,
+		specs: [{ name: "pkg", source: "npm:example", lazy: true, tools: ["example_tool"] }],
+	});
+	writeJson(join(agent, "settings.json"), { packages: [{ source: "npm:example", extensions: [] }] });
+	const markers = ["PI_IS_SUBAGENT", "PI_SUBAGENT_CHILD", "PI_SUBAGENT_NAME", "PI_AGENT_ROUTER_SUBAGENT"];
+	const previousEnv = { ...process.env };
+	try {
+		for (const marker of markers) {
+			for (const key of Object.keys(process.env)) delete process.env[key];
+			process.env[marker] = "1";
+			const child = mockPi();
+			createPiLazy(child.api, agent);
+			assert.equal(child.tools.has("example_tool"), false, marker);
+		}
+	} finally {
+		for (const key of Object.keys(process.env)) delete process.env[key];
+		Object.assign(process.env, previousEnv);
+	}
 });
 
 test("migration restores eager extensions without losing package metadata", () => {

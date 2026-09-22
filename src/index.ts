@@ -24,6 +24,33 @@ import { migrateSettings } from "./migrate.ts";
 import { isModuleLazyInSettings, resolveSpecPaths } from "./resolve.ts";
 import { performance } from "node:perf_hooks";
 import type { LazyConfig, LoadResult, ResolvedEntry } from "./types.ts";
+
+function isNonEmptyEnv(name: string): boolean {
+	return Boolean(process.env[name]?.trim());
+}
+
+const CHILD_MARKER_KEYS = [
+	"PI_IS_SUBAGENT",
+	"PI_SUBAGENT_NAME",
+	"PI_SUBAGENT_ID",
+	"PI_SUBAGENT_RUN_ID",
+	"PI_SUBAGENT_SESSION_ID",
+	"PI_SUBAGENT_SESSION",
+	"PI_SUBAGENT_ACTIVITY_FILE",
+	"PI_AGENT_ROUTER_SUBAGENT",
+] as const;
+
+function isChildProcess(): boolean {
+	const childFlag = process.env.PI_SUBAGENT_CHILD?.trim().toLowerCase();
+	if (childFlag === "1" || childFlag === "true") return true;
+	if (CHILD_MARKER_KEYS.some((key) => isNonEmptyEnv(key))) return true;
+	return isNonEmptyEnv("PI_SUBAGENT_CHILD_AGENT") && isNonEmptyEnv("PI_SUBAGENT_PARENT_PID");
+}
+
+function activeSpecs(config: LazyConfig) {
+	if (!isChildProcess()) return config.specs;
+	return config.specs.filter((spec) => spec.loadInSubagents === true);
+}
 import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { getSettingsPath } from "./config.ts";
 
@@ -101,7 +128,7 @@ function buildCatalog(config: LazyConfig, agentDir: string): Map<string, Resolve
 	const packages = readSettingsPackages(agentDir);
 	const map = new Map<string, ResolvedEntry>();
 
-	for (const spec of config.specs) {
+	for (const spec of activeSpecs(config)) {
 		const managed = isManagedLazy(spec);
 		const moduleLazyReady = managed && isModuleLazyInSettings(spec.source, packages);
 

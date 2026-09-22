@@ -331,6 +331,20 @@ triggers so they load on first real use instead.
 | `keywords` | no | Case-insensitive prompt substrings checked on `before_agent_start` |
 | `dependencies` | no | Other **spec names** to load first |
 | `description` | no | Human-readable note (shown in your own docs; not required at runtime) |
+| `loadInSubagents` | no | Whether this spec's lazy stubs may load in a detected child process (default `false` in children, `true` in the parent) |
+
+### Child Pi processes
+
+When Pi starts as a child process, pi-lazy omits lazy stubs by default. This
+prevents duplicate registration and keeps child tool surfaces intentional across
+subagent implementations. Set `loadInSubagents: true` only for packages that
+must manage their own lazy lifecycle inside children.
+
+Child detection uses explicit Pi child-process markers: `PI_SUBAGENT_CHILD=1`,
+`PI_IS_SUBAGENT`, child identity/run/session markers, or the documented
+child-agent/parent-PID marker pair. Parent-session variables are not sufficient
+because a parent may inherit them; generic configuration variables such as depth
+or limits also do not trigger child mode.
 
 ### Choosing what stays eager
 

@@ -37,6 +37,8 @@ export interface LazySpec {
 	dependencies?: string[];
 	/** Optional human description */
 	description?: string;
+	/** Whether this package's lazy stubs may load in detected child processes. Defaults false in child processes. */
+	loadInSubagents?: boolean;
 }
 
 export interface LazyConfig {

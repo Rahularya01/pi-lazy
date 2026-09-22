@@ -207,12 +207,22 @@ function normalizeSpec(value: unknown, index: number, defaultsLazy: LazyMode, is
 		issues.push(`${field}.description must be a string`);
 	}
 
+	let loadInSubagents: boolean | undefined;
+	if (value.loadInSubagents !== undefined) {
+		if (typeof value.loadInSubagents === "boolean") {
+			loadInSubagents = value.loadInSubagents;
+		} else {
+			issues.push(`${field}.loadInSubagents must be a boolean`);
+		}
+	}
+
 	return {
 		name,
 		source,
 		lazy,
 		...(priority === undefined ? {} : { priority }),
 		...(description === undefined ? {} : { description }),
+		...(loadInSubagents === undefined ? {} : { loadInSubagents }),
 		cmd: normalizeStringArray(value.cmd, `${field}.cmd`, issues),
 		tools: normalizeStringArray(value.tools, `${field}.tools`, issues),
 		keys: normalizeStringArray(value.keys, `${field}.keys`, issues),

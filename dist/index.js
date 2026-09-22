@@ -186,12 +186,21 @@ function normalizeSpec(value, index, defaultsLazy, issues) {
   if (value.description !== void 0 && description === void 0) {
     issues.push(`${field}.description must be a string`);
   }
+  let loadInSubagents;
+  if (value.loadInSubagents !== void 0) {
+    if (typeof value.loadInSubagents === "boolean") {
+      loadInSubagents = value.loadInSubagents;
+    } else {
+      issues.push(`${field}.loadInSubagents must be a boolean`);
+    }
+  }
   return {
     name,
     source,
     lazy,
     ...priority === void 0 ? {} : { priority },
     ...description === void 0 ? {} : { description },
+    ...loadInSubagents === void 0 ? {} : { loadInSubagents },
     cmd: normalizeStringArray(value.cmd, `${field}.cmd`, issues),
     tools: normalizeStringArray(value.tools, `${field}.tools`, issues),
     keys: normalizeStringArray(value.keys, `${field}.keys`, issues),
@@ -1042,6 +1051,29 @@ function migrateSettings(agentDir = getAgentDir3()) {
 // src/index.ts
 import { performance } from "node:perf_hooks";
 import { copyFileSync as copyFileSync2, existsSync as existsSync5, readFileSync as readFileSync5 } from "node:fs";
+function isNonEmptyEnv(name) {
+  return Boolean(process.env[name]?.trim());
+}
+var CHILD_MARKER_KEYS = [
+  "PI_IS_SUBAGENT",
+  "PI_SUBAGENT_NAME",
+  "PI_SUBAGENT_ID",
+  "PI_SUBAGENT_RUN_ID",
+  "PI_SUBAGENT_SESSION_ID",
+  "PI_SUBAGENT_SESSION",
+  "PI_SUBAGENT_ACTIVITY_FILE",
+  "PI_AGENT_ROUTER_SUBAGENT"
+];
+function isChildProcess() {
+  const childFlag = process.env.PI_SUBAGENT_CHILD?.trim().toLowerCase();
+  if (childFlag === "1" || childFlag === "true") return true;
+  if (CHILD_MARKER_KEYS.some((key) => isNonEmptyEnv(key))) return true;
+  return isNonEmptyEnv("PI_SUBAGENT_CHILD_AGENT") && isNonEmptyEnv("PI_SUBAGENT_PARENT_PID");
+}
+function activeSpecs(config) {
+  if (!isChildProcess()) return config.specs;
+  return config.specs.filter((spec) => spec.loadInSubagents === true);
+}
 var MAX_ADAPTIVE_YIELD_MS = 250;
 var PAUSE_TIMEOUT_MS = 6e4;
 function sleep(ms) {
@@ -1083,7 +1115,7 @@ function readSettingsPackages(agentDir) {
 function buildCatalog(config, agentDir) {
   const packages = readSettingsPackages(agentDir);
   const map = /* @__PURE__ */ new Map();
-  for (const spec of config.specs) {
+  for (const spec of activeSpecs(config)) {
     const managed = isManagedLazy(spec);
     const moduleLazyReady = managed && isModuleLazyInSettings(spec.source, packages);
     let state;
