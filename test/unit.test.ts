@@ -89,6 +89,15 @@ async function waitFor(predicate: () => boolean, timeoutMs = 1_000) {
 	}
 }
 
+test("host-provided packages are wildcard peers, not runtime dependencies", () => {
+	const manifest = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8"));
+	for (const name of ["@earendil-works/pi-coding-agent", "typebox"]) {
+		assert.equal(manifest.dependencies?.[name], undefined, name);
+		assert.equal(manifest.peerDependencies?.[name], "*", name);
+		assert.ok(manifest.devDependencies?.[name], `${name} remains available for development`);
+	}
+});
+
 test("config validation retains valid specs and rejects duplicate names", () => {
 	const agent = tempDir();
 	writeJson(join(agent, "lazy.json"), {

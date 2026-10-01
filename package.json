@@ -51,16 +51,15 @@
       "./dist/index.js"
     ]
   },
-  "dependencies": {
-    "typebox": "^1.0.17"
-  },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": ">=0.81.1"
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.2",
     "@types/node": "^24.0.0",
     "esbuild": "^0.25.12",
+    "typebox": "^1.0.17",
     "typescript": "^5.9.0"
   },
   "engines": {
